@@ -14,21 +14,23 @@ The repository contains one dependency-free static PalmWatch interface for the c
 
 [`index.html`](../index.html) owns the application shell, runtime state, renderers, Google Maps integration, navigation, and interaction handlers. Repository-owned deterministic snapshots under [`data/`](../data/) provide survey records. [`tests/static-check.mjs`](../tests/static-check.mjs) is the executable regression contract; both `npm test` and `npm run build` execute it.
 
+The Mapped POC behavior in the source `oil-palm-1.5-gui/index.html` was used as the parity reference. The standalone application deliberately excludes its company picker, other-company data, Leaflet integration, and multi-company behavior.
+
 ## Decision: three survey areas and dynamic capacity
 
 The runtime contains exactly these survey workspaces:
 
-- `MPOC-SURVEY-001`: 27 immutable source-backed Infected trees and capacity for 37 browser-saved additions.
+- `MPOC-SURVEY-001`: 27 immutable source-backed Infected trees plus 37 deterministic seeded Infected additions, filling its 64-tree capacity.
 - `MPOC-SURVEY-002`: 35 immutable source-backed Infected trees and capacity for 29 browser-saved additions.
 - `MPOC-SURVEY-003`: no fixed trees and 64 inactive layout-only records activated only by browser-saved markers.
 
-Fresh state therefore contains 62 active trees; the maximum is 192. Each survey uses one 8×8 layout. Fixed trees appear first and saved additions follow in stable Tree-ID order. Only active trees occupy cells; unused cells remain black, disabled, and have no active Tree Detail route.
+The default state therefore contains 99 active Infected trees: 64 in Area 001, 35 in Area 002, and none in Area 003. The maximum remains 192. Each survey uses one 8×8 layout. Fixed trees appear first and saved additions follow in stable Tree-ID order. Only active trees occupy cells; unused cells remain black, disabled, and have no active Tree Detail route.
 
 Stable Tree IDs are the identity boundary shared by map markers, selectors, grids, alerts, cases, treatments, reports, and Tree Detail. Area 001 optional IDs are `TREE-0113...TREE-0149`, Area 002 optional IDs are `TREE-0172...TREE-0200`, and Area 003 uses `TREE-0201...TREE-0264`. Removing an optional marker makes the lowest available ID reusable without renumbering surviving trees.
 
 ## Decision: one current-data adapter for every page
 
-`mappedPocCurrentData()` combines the immutable snapshot with valid version-9 browser-local marker state. Overview, Survey Areas, Alerts, Reports, Cases & Treatments, Administration, and Settings consume this shared current-data projection rather than independent totals or stale fixtures.
+`mappedPocCurrentData()` combines the immutable snapshot with valid version-2 browser-local marker state. Overview, Survey Areas, Alerts, Reports, Cases & Treatments, Administration, and Settings consume this shared current-data projection rather than independent totals or stale fixtures.
 
 - Overview metrics, rails, and tables use the current three-survey collection.
 - Survey Areas lists the three editable workspaces and opens their existing editors; it does not create additional areas.
@@ -79,7 +81,9 @@ Source coordinates are camera exposure positions. External source directories an
 
 ## Decision: browser-local state and reset boundary
 
-Survey editing uses version-9 browser-local state with separate geofence and marker branches for Areas 001, 002, and 003. Invalid or unavailable storage leaves the last valid in-memory or deterministic state authoritative. Marker collections, geofence overrides, and their migrations remain isolated by Survey ID.
+Survey editing uses browser-local schema version 2 under `mapped-poc-gui.state.v2`, with separate geofence and marker branches for Areas 001, 002, and 003. The deterministic seed includes Area 001's saved default geofence and 37 added Infected markers; Area 002 and Area 003 have no seeded additions.
+
+The one-time `mapped-poc-gui.state.v1` migration applies this seed only when legacy spatial state is untouched or invalid. Valid deliberate geofence or marker edits remain authoritative, while accounts, alert reads, cases, treatments, administration data, report history, and preferences are preserved independently. Invalid or unavailable storage falls back to the deterministic state, and marker collections and geofence overrides remain isolated by Survey ID.
 
 Operational Reset clears alert reads, workflow overrides, report history, administration changes, and preferences. It deliberately preserves saved geofences and marker collections because those are survey-definition state, not page-level workflow state.
 
@@ -98,7 +102,7 @@ The standalone current-data increment passed the independent gates on 2026-09-11
 - `npm test`: green.
 - `npm run build`: green.
 - `git diff --check`: green.
-- [`tests/static-check.mjs`](../tests/static-check.mjs) covers the three-area dataset, fresh and maximum capacity, version-9 marker state, role-gated mutations, current-data use by every route, stable Survey/Tree navigation, Google Satellite Overview and fallback surfaces, the combined Area 001/003 marker, status/score/image rules, report-history scoping, and Reset preservation of survey state.
+- [`tests/static-check.mjs`](../tests/static-check.mjs) covers the 64/35/0 default, maximum capacity, version-2 state and legacy migration, role-gated mutations, current-data use by every route, stable Survey/Tree navigation, Google Satellite Overview and fallback surfaces, the combined Area 001/003 marker, status/score/image rules, report-history scoping, and Reset preservation of survey state.
 
 ## Current limitations
 

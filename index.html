@@ -280,8 +280,9 @@
     const CASE_ACTION_LABELS = {"field-assessment":"Record field assessment","area-action":"Take area-manager action",reopen:"Reopen case"};
     const TREATMENT_TRANSITIONS = {Recommended:"Planned",Planned:"In progress","In progress":"Completed"};
     const TREATMENT_PROGRESS = {Recommended:0,Planned:20,"In progress":60,Completed:100};
-    const ALERT_STATE_KEY = "mapped-poc-gui.state.v1";
-    const DEMO_STATE_VERSION = 1;
+    const ALERT_STATE_KEY = "mapped-poc-gui.state.v2";
+    const LEGACY_ALERT_STATE_KEY = "mapped-poc-gui.state.v1";
+    const DEMO_STATE_VERSION = 2;
     const AP_BOUNDS = [[12.55,76.70],[19.25,84.85]];
     const AREA_ONE_ID = "MPOC-SURVEY-001";
     const AREA_TWO_ID = "MPOC-SURVEY-002";
@@ -522,9 +523,22 @@
       const mapping=window.MAPPED_POC_INITIAL_MAPPING||{};
       return {version:DEMO_STATE_VERSION,accounts:Object.fromEntries(Object.keys(roles).map(id=>[id,{readAlertIds:[]}])) ,cases:{},caseActions:[],treatments:{},administration:{users:{},events:[]},reportHistory:[],preferences:defaultPreferences(),geofenceOverrides:structuredClone(mapping.geofenceOverrides||{}),areaOneTreePositions:structuredClone(mapping.areaOneTreePositions||{}),areaTwoTreePositions:structuredClone(mapping.areaTwoTreePositions||{}),areaThreeTreePositions:structuredClone(mapping.areaThreeTreePositions||{})};
     }
+    function hasValidDeliberateSpatialState(saved){
+      if(!saved||typeof saved!=="object")return false;
+      const overrides=saved.geofenceOverrides&&typeof saved.geofenceOverrides==="object"?saved.geofenceOverrides:{};
+      const areaOneBounds=validAreaOneGeofenceBounds(overrides[AREA_ONE_ID])?normalizeAreaOneGeofenceBounds(overrides[AREA_ONE_ID]):AREA_ONE_DEFAULT_GEOFENCE_BOUNDS;
+      const areaTwoPolygon=validAreaTwoGeofencePolygon(overrides[AREA_TWO_ID])&&areaTwoSourceObservations().every(observation=>pointInsideAreaTwoPolygon(observation,overrides[AREA_TWO_ID]))?normalizeAreaTwoGeofencePolygon(overrides[AREA_TWO_ID]):AREA_TWO_DEFAULT_GEOFENCE;
+      const areaThreeBounds=validAreaOneGeofenceBounds(overrides[AREA_THREE_ID])?normalizeAreaOneGeofenceBounds(overrides[AREA_THREE_ID]):AREA_THREE_DEFAULT_GEOFENCE_BOUNDS;
+      const validOverride=validAreaOneGeofenceBounds(overrides[AREA_ONE_ID])||(validAreaTwoGeofencePolygon(overrides[AREA_TWO_ID])&&areaTwoSourceObservations().every(observation=>pointInsideAreaTwoPolygon(observation,overrides[AREA_TWO_ID])))||validAreaOneGeofenceBounds(overrides[AREA_THREE_ID]);
+      const areaOnePositions=saved.areaOneTreePositions||{},areaTwoPositions=saved.areaTwoTreePositions||{},areaThreePositions=saved.areaThreeTreePositions||{};
+      const validPositions=(Object.keys(areaOnePositions).length>0&&validAreaOneTreePositions(areaOnePositions,areaOneBounds))||(Object.keys(areaTwoPositions).length>0&&validAreaTwoTreePositions(areaTwoPositions,areaTwoPolygon))||(Object.keys(areaThreePositions).length>0&&validAreaThreeTreePositions(areaThreePositions,areaThreeBounds));
+      return Boolean(validOverride||validPositions);
+    }
     function migrateDemoState(saved){
       const fallback=defaultDemoState();
       if(!saved||typeof saved!=="object")return fallback;
+      const requiresSeedUpgrade=Number(saved.version)<DEMO_STATE_VERSION||!Number.isFinite(Number(saved.version));
+      const spatialSource=requiresSeedUpgrade&&!hasValidDeliberateSpatialState(saved)?fallback:saved;
       const migrated={...fallback,version:DEMO_STATE_VERSION,accounts:saved.accounts,cases:saved.cases,caseActions:saved.caseActions,treatments:saved.treatments,administration:saved.administration,reportHistory:saved.reportHistory,preferences:saved.preferences,geofenceOverrides:saved.geofenceOverrides,areaOneTreePositions:saved.areaOneTreePositions,areaTwoTreePositions:saved.areaTwoTreePositions,areaThreeTreePositions:saved.areaThreeTreePositions};
       migrated.accounts=saved.accounts&&typeof saved.accounts==="object"?saved.accounts:{};
       Object.keys(roles).forEach(id=>{const account=migrated.accounts[id]&&typeof migrated.accounts[id]==="object"?migrated.accounts[id]:{};account.readAlertIds=Array.isArray(account.readAlertIds)?account.readAlertIds.filter(value=>typeof value==="string"):[];migrated.accounts[id]=account;});
@@ -537,21 +551,26 @@
       migrated.reportHistory=Array.isArray(saved.reportHistory)?saved.reportHistory:[];
       migrated.preferences=saved.preferences&&typeof saved.preferences==="object"?saved.preferences:{};
       Object.keys(roles).forEach(id=>{const pref=migrated.preferences[id]&&typeof migrated.preferences[id]==="object"?migrated.preferences[id]:{};migrated.preferences[id]={notifications:pref.notifications!==false,density:pref.density==="compact"?"compact":"comfortable"};});
-      const areaOneBounds=saved.geofenceOverrides?.[AREA_ONE_ID];
-      const areaTwoGeofence=saved.geofenceOverrides?.[AREA_TWO_ID];
-      const areaThreeBounds=saved.geofenceOverrides?.[AREA_THREE_ID];
-      migrated.geofenceOverrides={...(validAreaOneGeofenceBounds(areaOneBounds)?{[AREA_ONE_ID]:normalizeAreaOneGeofenceBounds(areaOneBounds)}:{}),...(validAreaTwoGeofencePolygon(areaTwoGeofence)&&areaTwoSourceObservations().every(observation=>pointInsideAreaTwoPolygon(observation,areaTwoGeofence))?{[AREA_TWO_ID]:normalizeAreaTwoGeofencePolygon(areaTwoGeofence)}:{}),...(validAreaOneGeofenceBounds(areaThreeBounds)&&areaThreePositionsInsideBounds(areaThreeBounds,saved.areaThreeTreePositions||{})?{[AREA_THREE_ID]:normalizeAreaOneGeofenceBounds(areaThreeBounds)}:{})};
-      migrated.areaOneTreePositions=validAreaOneTreePositions(saved.areaOneTreePositions,migrated.geofenceOverrides[AREA_ONE_ID]||AREA_ONE_DEFAULT_GEOFENCE_BOUNDS)?normalizeAreaOneTreePositions(saved.areaOneTreePositions,migrated.geofenceOverrides[AREA_ONE_ID]||AREA_ONE_DEFAULT_GEOFENCE_BOUNDS):{};
+      const areaOneBounds=spatialSource.geofenceOverrides?.[AREA_ONE_ID];
+      const areaTwoGeofence=spatialSource.geofenceOverrides?.[AREA_TWO_ID];
+      const areaThreeBounds=spatialSource.geofenceOverrides?.[AREA_THREE_ID];
+      migrated.geofenceOverrides={...(validAreaOneGeofenceBounds(areaOneBounds)?{[AREA_ONE_ID]:normalizeAreaOneGeofenceBounds(areaOneBounds)}:{}),...(validAreaTwoGeofencePolygon(areaTwoGeofence)&&areaTwoSourceObservations().every(observation=>pointInsideAreaTwoPolygon(observation,areaTwoGeofence))?{[AREA_TWO_ID]:normalizeAreaTwoGeofencePolygon(areaTwoGeofence)}:{}),...(validAreaOneGeofenceBounds(areaThreeBounds)&&areaThreePositionsInsideBounds(areaThreeBounds,spatialSource.areaThreeTreePositions||{})?{[AREA_THREE_ID]:normalizeAreaOneGeofenceBounds(areaThreeBounds)}:{})};
+      migrated.areaOneTreePositions=validAreaOneTreePositions(spatialSource.areaOneTreePositions,migrated.geofenceOverrides[AREA_ONE_ID]||AREA_ONE_DEFAULT_GEOFENCE_BOUNDS)?normalizeAreaOneTreePositions(spatialSource.areaOneTreePositions,migrated.geofenceOverrides[AREA_ONE_ID]||AREA_ONE_DEFAULT_GEOFENCE_BOUNDS):{};
       const effectiveAreaTwo=migrated.geofenceOverrides[AREA_TWO_ID]||AREA_TWO_DEFAULT_GEOFENCE;
-      migrated.areaTwoTreePositions=validAreaTwoTreePositions(saved.areaTwoTreePositions||{},effectiveAreaTwo)?normalizeAreaTwoTreePositions(saved.areaTwoTreePositions||{},effectiveAreaTwo):{};
+      migrated.areaTwoTreePositions=validAreaTwoTreePositions(spatialSource.areaTwoTreePositions||{},effectiveAreaTwo)?normalizeAreaTwoTreePositions(spatialSource.areaTwoTreePositions||{},effectiveAreaTwo):{};
       const effectiveAreaThree=migrated.geofenceOverrides[AREA_THREE_ID]||AREA_THREE_DEFAULT_GEOFENCE_BOUNDS;
-      migrated.areaThreeTreePositions=Number(saved.version)>=DEMO_STATE_VERSION&&validAreaThreeTreePositions(saved.areaThreeTreePositions||{},effectiveAreaThree)?normalizeAreaThreeTreePositions(saved.areaThreeTreePositions||{},effectiveAreaThree):{};
+      migrated.areaThreeTreePositions=validAreaThreeTreePositions(spatialSource.areaThreeTreePositions||{},effectiveAreaThree)?normalizeAreaThreeTreePositions(spatialSource.areaThreeTreePositions||{},effectiveAreaThree):{};
       return migrated;
     }
     function loadDemoState(){
       try{
-        const saved=JSON.parse(localStorage.getItem(ALERT_STATE_KEY)||"null");
-        return migrateDemoState(saved);
+        const current=localStorage.getItem(ALERT_STATE_KEY);
+        if(current){try{return migrateDemoState(JSON.parse(current));}catch{}}
+        const legacy=localStorage.getItem(LEGACY_ALERT_STATE_KEY);
+        if(!legacy)return defaultDemoState();
+        const migrated=migrateDemoState(JSON.parse(legacy));
+        try{localStorage.setItem(ALERT_STATE_KEY,JSON.stringify(migrated));}catch{}
+        return migrated;
       }catch{return defaultDemoState();}
     }
     function saveDemoState(){
@@ -570,6 +589,7 @@
       return demoState;
     }
     let demoState = loadDemoState();
+    saveDemoState();
     syncAreaOneTreePositions();
     syncAreaTwoTreePositions();
     syncAreaThreeTreePositions();

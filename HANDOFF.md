@@ -4,16 +4,17 @@
 
 - Repository: `D:\drone-mapping\mapped-poc-gui`; branch: `main`; remote: `https://github.com/vjk7989/mapped-poc-gui`.
 - The application opens directly to Mapped POC with **CEO / General Manager** selected. There is no company picker, and the product ships only its Mapped POC profile and logo.
-- Mapped POC contains only Survey Areas 001–003. Fresh browser state has 62 fixed Infected trees: 27 in Area 001, 35 in Area 002, and none in Area 003. Saved markers can change the active totals, and every sidebar page reads the current role-scoped browser state.
+- Mapped POC contains only Survey Areas 001–003. Its repository-owned default has 99 Infected trees: 64 in Area 001, 35 in Area 002, and none in Area 003; Healthy and Suspected counts are both zero. Saved markers can change the active totals, and every sidebar page reads the current role-scoped browser state.
 - Google Satellite Maps power the portfolio overview and all three survey maps. Survey geofences, markers, combined Area 001/003 overview selection, accessible list/table equivalents, and map-failure fallbacks remain available as defined in the runtime.
-- The independent release runner passed `npm test`, `npm run build`, staged diff hygiene, credential/path scans, retired-code scans, and confirmation that the source repository remained clean.
+- Before this handoff update, the independent release runner passed `npm test`, `npm run build`, and `git diff --check`. Rerun all three after the documentation changes before release.
 
 ## Data and browser state
 
 - Runtime and UI: `index.html`.
 - Survey snapshots: `data/mapped-poc-data.js` and `data/survey-002-farm-data.js`.
 - Initial editable mapping state: `data/initial-mapping-state.js`.
-- Browser storage schema is version 1 under `mapped-poc-gui.state.v1`. The repository seed starts with no overrides or added markers; saved geofences and marker collections are isolated for Areas 001, 002, and 003.
+- Browser storage schema is version 2 under `mapped-poc-gui.state.v2`. Version-1 state is migrated: valid deliberate user spatial edits and non-spatial preferences are preserved, while fresh or untouched state receives the version-2 default.
+- `data/initial-mapping-state.js` seeds Area 001 with its saved geofence and 37 added Infected markers. Together with its 27 fixed records this produces 64 trees; Area 002 keeps 35 fixed Infected trees and Area 003 starts empty.
 - Area 001 reserves optional IDs `TREE-0113…TREE-0149`; Area 002 reserves `TREE-0172…TREE-0200`; empty Area 003 reserves `TREE-0201…TREE-0264`. Only saved positions activate optional records.
 - Operational marker coordinates and geofences are not surveyed palm-base locations or legal property boundaries. Ganoderma percentages are deterministic modelled workflow values, not confirmed field or laboratory diagnoses.
 
@@ -35,6 +36,7 @@ Do not duplicate these artifacts in future handoffs:
 - Executable acceptance contract: `tests/static-check.mjs`.
 - Local setup and deployment summary: `README.md`.
 - GitHub Pages workflow: `.github/workflows/deploy-pages.yml`.
+- The source `D:\drone-mapping\oil-palm-1.5-gui\index.html` is a UI/behavior parity reference only. Do not copy its company selector, unrelated companies, temporary exporter, browser export, or local state into this repository.
 
 ## Release verification
 
@@ -46,6 +48,7 @@ For every future release, run `npm test`, `npm run build`, and `git diff --check
 - Keep all project output inside this repository on `D:`. Do not introduce runtime reads from external source folders.
 - Do not inspect, commit, document, log, or repeat the local Google Maps key.
 - Preserve status/provenance distinctions, globally unique Tree IDs, area-isolated mapping state, Google failure fallbacks, and accessible list/table alternatives.
+- Preserve direct Mapped POC startup with **CEO / General Manager** as the default role, administrator-only editing, and the `hyper_maps_key` runtime property. Never commit its local value.
 
 ## Suggested skills
 
