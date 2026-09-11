@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 
 const root = new URL("../", import.meta.url);
@@ -56,6 +57,16 @@ function evaluateWindowScript(source) {
   const window = {};
   Function("window", source)(window);
   return window;
+}
+
+function canonicalize(value) {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === "object") return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonicalize(value[key])]));
+  return value;
+}
+
+function canonicalSha256(value) {
+  return createHash("sha256").update(JSON.stringify(canonicalize(value))).digest("hex");
 }
 
 function assertAdminGuard(name) {
@@ -146,29 +157,37 @@ for (const [name, shape] of [["initAreaOneGoogleMap", /google\.maps\.Rectangle/]
 // Browser mapping seed: exact schema, deterministic Area 001 defaults, and area isolation.
 const mapping = evaluateWindowScript(mappingSeedSource).MAPPED_POC_INITIAL_MAPPING;
 assert.deepEqual(Object.keys(mapping), ["version", "geofenceOverrides", "areaOneTreePositions", "areaTwoTreePositions", "areaThreeTreePositions"], "The initial mapping seed must have the exact standalone schema");
-assert.equal(mapping.version, 2, "The standalone mapping seed version must match browser state v2");
-assert.deepEqual(Object.keys(mapping.geofenceOverrides), ["MPOC-SURVEY-001"], "Area 001 must start with an explicitly saved geofence so all recovered markers are visible");
-assert.deepEqual(mapping.geofenceOverrides["MPOC-SURVEY-001"], { south: 16.912209794, west: 81.169804433, north: 16.912805551, east: 81.169912437 }, "Area 001 must use the approved operational rectangle");
+assert.equal(mapping.version, 3, "The recovered three-survey mapping seed must match browser state v3");
+assert.deepEqual(Object.keys(mapping.geofenceOverrides), ["MPOC-SURVEY-001", "MPOC-SURVEY-002", "MPOC-SURVEY-003"], "Every survey must start with its recovered saved geofence");
+assert.equal(canonicalSha256(mapping.geofenceOverrides), "635cecc7902f72de5f086ad5f93c80bfaa6fee365ba36e26cf3ff9e5577f3d8a", "All recovered geofence vertices and bounds must remain exact");
 const seededAreaOneEntries = Object.entries(mapping.areaOneTreePositions);
 assert.equal(seededAreaOneEntries.length, 37, "Area 001 must start with 37 seeded added markers");
 assert.deepEqual(seededAreaOneEntries.map(([treeId]) => treeId), Array.from({ length: 37 }, (_, index) => `TREE-${String(index + 113).padStart(4, "0")}`), "Seeded Area 001 marker IDs must remain stable");
 assert.ok(seededAreaOneEntries.every(([, point]) => point.displayStatus === "Infected" && Number.isFinite(point.latitude) && Number.isFinite(point.longitude)), "Seeded Area 001 markers must all be infected and positioned");
 assert.ok(seededAreaOneEntries.every(([, point]) => point.latitude >= mapping.geofenceOverrides["MPOC-SURVEY-001"].south && point.latitude <= mapping.geofenceOverrides["MPOC-SURVEY-001"].north && point.longitude >= mapping.geofenceOverrides["MPOC-SURVEY-001"].west && point.longitude <= mapping.geofenceOverrides["MPOC-SURVEY-001"].east), "Seeded Area 001 markers must be inside the saved geofence");
 assert.equal(new Set(seededAreaOneEntries.map(([, point]) => `${point.latitude}:${point.longitude}`)).size, 37, "Seeded Area 001 marker coordinates must be unique");
+assert.equal(canonicalSha256(mapping.areaOneTreePositions), "2de6cf750845ffa45b90329897a8579bd09f61b3f77ea9f3ef89ba13bc6a3a47", "Area 001 IDs, coordinates, and statuses must exactly match the recovered source state");
 assert.equal(areaOneFixed.length + seededAreaOneEntries.length, 64, "Area 001 must initialize to a full 64-tree grid");
-assert.deepEqual(mapping.areaTwoTreePositions, {}, "Area 002 must not start with added markers");
-assert.deepEqual(mapping.areaThreeTreePositions, {}, "Area 003 must remain empty until markers are saved");
-assert.equal(freshTrees.length + seededAreaOneEntries.length, 99, "Fresh standalone browser state must initialize with 99 active trees");
-assert.equal(freshTrees.filter((item) => item.displayStatus === "Infected").length + seededAreaOneEntries.length, 99, "All 99 initial active trees must be infected");
+const seededAreaTwoEntries = Object.entries(mapping.areaTwoTreePositions);
+const seededAreaThreeEntries = Object.entries(mapping.areaThreeTreePositions);
+assert.deepEqual(seededAreaTwoEntries.map(([treeId]) => treeId), Array.from({ length: 22 }, (_, index) => `TREE-${String(index + 172).padStart(4, "0")}`), "Area 002 recovered added-tree IDs must remain stable");
+assert.deepEqual(seededAreaThreeEntries.map(([treeId]) => treeId), Array.from({ length: 50 }, (_, index) => `TREE-${String(index + 201).padStart(4, "0")}`), "Area 003 recovered tree IDs must remain stable");
+assert.equal(canonicalSha256(mapping.areaTwoTreePositions), "e9344e0b1bfdcfbf05f55dd3c0559000d003f1047ead5465260116040e7d5c7a", "Area 002 IDs, coordinates, and statuses must exactly match the recovered source state");
+assert.equal(canonicalSha256(mapping.areaThreeTreePositions), "661572a4978ddb75b8bc37b1af07a1a7f3b4511eccf472b18f80affef13d39bd", "Area 003 IDs, coordinates, and statuses must exactly match the recovered source state");
+assert.deepEqual(Object.fromEntries(["Infected", "Suspected", "Healthy"].map((status) => [status, seededAreaTwoEntries.filter(([, point]) => point.displayStatus === status).length])), { Infected: 0, Suspected: 10, Healthy: 12 }, "Area 002 recovered marker statuses must remain exact");
+assert.ok(seededAreaThreeEntries.every(([, point]) => point.displayStatus === "Healthy" && Number.isFinite(point.latitude) && Number.isFinite(point.longitude)), "All 50 recovered Area 003 markers must remain healthy and positioned");
+assert.equal(freshTrees.length + seededAreaOneEntries.length + seededAreaTwoEntries.length + seededAreaThreeEntries.length, 171, "Fresh standalone browser state must initialize with 171 active trees");
+const initialStatusCounts = [...freshTrees.map((item) => item.displayStatus), ...seededAreaOneEntries.map(([, point]) => point.displayStatus), ...seededAreaTwoEntries.map(([, point]) => point.displayStatus), ...seededAreaThreeEntries.map(([, point]) => point.displayStatus)].reduce((counts, status) => ({ ...counts, [status]: (counts[status] || 0) + 1 }), {});
+assert.deepEqual(initialStatusCounts, { Infected: 99, Suspected: 10, Healthy: 62 }, "Fresh status totals must match the recovered 99 infected, 10 suspected, and 62 healthy trees");
 assert.deepEqual({
   "MPOC-SURVEY-001": areaOneFixed.length + seededAreaOneEntries.length,
-  "MPOC-SURVEY-002": areaTwoFixed.length + Object.keys(mapping.areaTwoTreePositions).length,
-  "MPOC-SURVEY-003": Object.keys(mapping.areaThreeTreePositions).length,
+  "MPOC-SURVEY-002": areaTwoFixed.length + seededAreaTwoEntries.length,
+  "MPOC-SURVEY-003": seededAreaThreeEntries.length,
 }, {
   "MPOC-SURVEY-001": 64,
-  "MPOC-SURVEY-002": 35,
-  "MPOC-SURVEY-003": 0,
-}, "The standalone seed must resolve to the approved 64/35/0 survey distribution");
+  "MPOC-SURVEY-002": 57,
+  "MPOC-SURVEY-003": 50,
+}, "The standalone seed must resolve to the recovered 64/57/50 survey distribution");
 for (const key of ["geofenceOverrides", "areaOneTreePositions", "areaTwoTreePositions", "areaThreeTreePositions"]) {
   assert.ok(Object.isFrozen(mapping[key]), `${key} must be immutable seed data`);
 }
@@ -177,14 +196,16 @@ assert.match(html, /data\/initial-mapping-state\.js/, "The browser must load the
 const defaults = functionBody("defaultDemoState");
 assert.match(defaults, /window\.MAPPED_POC_INITIAL_MAPPING/, "Fresh browser state must derive mapping fields from the standalone seed");
 for (const key of ["geofenceOverrides", "areaOneTreePositions", "areaTwoTreePositions", "areaThreeTreePositions"]) assert.match(defaults, new RegExp(`${key}\\s*:\\s*structuredClone\\s*\\(\\s*mapping\\.${key}`), `Fresh state must clone ${key} without sharing seed objects`);
-assert.match(html, /const\s+DEMO_STATE_VERSION\s*=\s*2\s*;/, "Browser state schema must match the mapping seed version");
-assert.match(html, /const\s+ALERT_STATE_KEY\s*=\s*["']mapped-poc-gui\.state\.v2["']/, "Standalone state must use its own v2 storage key");
-assert.match(html, /const\s+LEGACY_ALERT_STATE_KEY\s*=\s*["']mapped-poc-gui\.state\.v1["']/, "The v1 storage key must remain available for one-time migration");
+assert.match(html, /const\s+DEMO_STATE_VERSION\s*=\s*3\s*;/, "Browser state schema must match the mapping seed version");
+assert.match(html, /const\s+ALERT_STATE_KEY\s*=\s*["']mapped-poc-gui\.state\.v3["']/, "Standalone state must use its own v3 storage key");
+assert.match(html, /const\s+LEGACY_ALERT_STATE_KEY\s*=\s*["']mapped-poc-gui\.state\.v2["']/, "The v2 storage key must remain available for one-time migration");
 
 const migration = functionBody("migrateDemoState");
 assert.match(migration, /Number\s*\(\s*saved\.version\s*\)\s*<\s*DEMO_STATE_VERSION|saved\.version\s*!==\s*DEMO_STATE_VERSION/, "Migration must distinguish older installations from current state");
 assert.match(migration, /deliberateSpatial|hasDeliberateSpatial/i, "Migration must explicitly distinguish untouched legacy mapping from deliberate spatial edits");
-assert.match(migration, /fallback\.(?:geofenceOverrides|areaOneTreePositions)|defaultDemoState\s*\(/, "Untouched legacy mapping must fall back to the repository-owned 99-tree seed");
+assert.match(migration, /isPreviousDefaultSpatialState\s*\(\s*saved\s*\)/, "Migration must recognize the untouched 99-tree v2 default before applying the recovered seed");
+assert.match(migration, /spatialSource[^?]*\?\s*fallback\s*:\s*saved|spatialSource\s*=\s*[^;]*\?\s*fallback\s*:\s*saved/s, "Migration must upgrade untouched mapping while retaining deliberate valid edits");
+assert.match(migration, /fallback\.(?:geofenceOverrides|areaOneTreePositions)|defaultDemoState\s*\(/, "Untouched legacy mapping must fall back to the repository-owned recovered seed");
 for (const key of ["accounts", "cases", "caseActions", "treatments", "administration", "reportHistory", "preferences"]) {
   assert.match(migration, new RegExp(`saved\\.${key}`), `Migration must preserve valid non-spatial ${key} state`);
 }
@@ -192,9 +213,9 @@ for (const key of ["geofenceOverrides", "areaOneTreePositions", "areaTwoTreePosi
   assert.match(migration, new RegExp(`saved\\.${key}`), `Migration must inspect and preserve valid deliberate ${key} edits`);
 }
 const stateLoader = functionBody("loadDemoState");
-assert.match(stateLoader, /localStorage\.getItem\s*\(\s*ALERT_STATE_KEY\s*\)/, "State loading must prefer the current v2 namespace");
-assert.match(stateLoader, /localStorage\.getItem\s*\(\s*LEGACY_ALERT_STATE_KEY\s*\)/, "State loading must fall back to the legacy v1 namespace");
-assert.match(stateLoader, /localStorage\.setItem\s*\(\s*ALERT_STATE_KEY|saveDemoState\s*\(/, "A migrated legacy state must be persisted into the v2 namespace");
+assert.match(stateLoader, /localStorage\.getItem\s*\(\s*ALERT_STATE_KEY\s*\)/, "State loading must prefer the current v3 namespace");
+assert.match(stateLoader, /localStorage\.getItem\s*\(\s*LEGACY_ALERT_STATE_KEY\s*\)/, "State loading must fall back to the legacy v2 namespace");
+assert.match(stateLoader, /localStorage\.setItem\s*\(\s*ALERT_STATE_KEY|saveDemoState\s*\(/, "A migrated legacy state must be persisted into the v3 namespace");
 for (const [name, areaId, positionsKey] of [
   ["saveAreaOneTreePositions", "AREA_ONE_ID", "areaOneTreePositions"],
   ["saveAreaTwoTreePositions", "AREA_TWO_ID", "areaTwoTreePositions"],
@@ -212,6 +233,15 @@ const cells = functionBody("cellsFor");
 assert.match(cells, /id\s*:\s*observation\.treeId/, "Grid cells must use the observation Tree ID as their identity");
 assert.match(cells, /observation\.displayStatus/, "Grid colour must derive from the same observation status shown elsewhere");
 const mappedFarm = functionBody("renderMappedPocFarm");
+const farmDispatcher = functionBody("renderFarm");
+assert.match(farmDispatcher, /return\s+renderMappedPocFarm\s*\(\s*farm\s*\)/, "All three survey areas must use one shared farm renderer instead of drifting into area-specific layouts");
+for (const token of [
+  /class=["']grid2["']/,
+  /class=["']mapped-tree-stack["'][^]*class=["']card survey-map-card["']/,
+  /id=["']surveyAreaMap["']/,
+  /Tree layout · 8×8/,
+  /class=["']treegrid["']/,
+]) assert.match(mappedFarm, token, "Every survey farm must retain the same map-left and 8×8-grid-right workspace structure");
 assert.match(mappedFarm, /data-tree\s*=\s*["']\$\{cell\.id\}/, "Occupied grid cells must expose their stable Tree ID");
 assert.match(mappedFarm, /state\.treeId\s*=\s*button\.dataset\.tree/, "Clicking a grid tree must open that exact Tree ID");
 for (const mapFunction of ["initAreaOneGoogleMap", "initAreaTwoGoogleMap", "initAreaThreeGoogleMap"]) {

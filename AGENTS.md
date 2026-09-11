@@ -4,7 +4,7 @@ These rules apply to every task in this repository.
 
 ## Workspace boundary
 
-- Keep all project work, generated artifacts, caches, temporary files, test outputs, and context documents inside `D:\drone-mapping\oil-palm-1.5-gui`.
+- Keep all project work, generated artifacts, caches, temporary files, test outputs, and context documents inside `D:\drone-mapping\mapped-poc-gui`.
 - Do not create project artifacts on `C:`. Reading installed tools or skills from `C:` is allowed only when required to operate them.
 - Before running a tool that may use a global cache or temporary directory, redirect its project-specific cache/temp output into this repository when the tool supports it.
 

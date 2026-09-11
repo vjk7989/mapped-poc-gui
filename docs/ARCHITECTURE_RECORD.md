@@ -16,21 +16,21 @@ The repository contains one dependency-free static PalmWatch interface for the c
 
 The Mapped POC behavior in the source `oil-palm-1.5-gui/index.html` was used as the parity reference. The standalone application deliberately excludes its company picker, other-company data, Leaflet integration, and multi-company behavior.
 
-## Decision: three survey areas and dynamic capacity
+## Decision: recovered three-survey spatial baseline and dynamic capacity
 
 The runtime contains exactly these survey workspaces:
 
-- `MPOC-SURVEY-001`: 27 immutable source-backed Infected trees plus 37 deterministic seeded Infected additions, filling its 64-tree capacity.
-- `MPOC-SURVEY-002`: 35 immutable source-backed Infected trees and capacity for 29 browser-saved additions.
-- `MPOC-SURVEY-003`: no fixed trees and 64 inactive layout-only records activated only by browser-saved markers.
+- `MPOC-SURVEY-001`: 27 immutable source-backed trees plus 37 recovered additions, filling its 64-tree capacity; all 64 are Infected.
+- `MPOC-SURVEY-002`: 35 immutable source-backed Infected trees plus 22 recovered additions, for 57 active trees.
+- `MPOC-SURVEY-003`: 50 recovered additions and no fixed trees.
 
-The default state therefore contains 99 active Infected trees: 64 in Area 001, 35 in Area 002, and none in Area 003. The maximum remains 192. Each survey uses one 8×8 layout. Fixed trees appear first and saved additions follow in stable Tree-ID order. Only active trees occupy cells; unused cells remain black, disabled, and have no active Tree Detail route.
+The repository-owned default in [`data/initial-mapping-state.js`](../data/initial-mapping-state.js) preserves the exact geofences, marker coordinates, IDs, and statuses recovered from the requested `file://` application state. It contains 171 active trees across Areas 001/002/003 as 64/57/50, comprising 99 Infected, 10 Suspected, and 62 Healthy trees. The maximum remains 192. Each survey uses one 8×8 layout. Fixed trees appear first and saved additions follow in stable Tree-ID order. Only active trees occupy cells; unused cells remain black, disabled, and have no active Tree Detail route.
 
 Stable Tree IDs are the identity boundary shared by map markers, selectors, grids, alerts, cases, treatments, reports, and Tree Detail. Area 001 optional IDs are `TREE-0113...TREE-0149`, Area 002 optional IDs are `TREE-0172...TREE-0200`, and Area 003 uses `TREE-0201...TREE-0264`. Removing an optional marker makes the lowest available ID reusable without renumbering surviving trees.
 
 ## Decision: one current-data adapter for every page
 
-`mappedPocCurrentData()` combines the immutable snapshot with valid version-2 browser-local marker state. Overview, Survey Areas, Alerts, Reports, Cases & Treatments, Administration, and Settings consume this shared current-data projection rather than independent totals or stale fixtures.
+`mappedPocCurrentData()` combines the immutable snapshot with valid version-3 browser-local marker state. Overview, Survey Areas, Alerts, Reports, Cases & Treatments, Administration, and Settings consume this shared current-data projection rather than independent totals or stale fixtures.
 
 - Overview metrics, rails, and tables use the current three-survey collection.
 - Survey Areas lists the three editable workspaces and opens their existing editors; it does not create additional areas.
@@ -79,11 +79,11 @@ Tree Detail displays the selected marker's exact stored latitude and longitude, 
 
 Source coordinates are camera exposure positions. External source directories and workbooks are read-only derivation inputs; the browser performs no runtime reads from them. Only optimized, repository-owned evidence assets are served.
 
-## Decision: browser-local state and reset boundary
+## Decision: browser-local state and recovered-default migration
 
-Survey editing uses browser-local schema version 2 under `mapped-poc-gui.state.v2`, with separate geofence and marker branches for Areas 001, 002, and 003. The deterministic seed includes Area 001's saved default geofence and 37 added Infected markers; Area 002 and Area 003 have no seeded additions.
+Survey editing uses browser-local schema version 3 under `mapped-poc-gui.state.v3`, with separate geofence and marker branches for Areas 001, 002, and 003. Its deterministic seed is the exact recovered 64/57/50 spatial state stored in [`data/initial-mapping-state.js`](../data/initial-mapping-state.js).
 
-The one-time `mapped-poc-gui.state.v1` migration applies this seed only when legacy spatial state is untouched or invalid. Valid deliberate geofence or marker edits remain authoritative, while accounts, alert reads, cases, treatments, administration data, report history, and preferences are preserved independently. Invalid or unavailable storage falls back to the deterministic state, and marker collections and geofence overrides remain isolated by Survey ID.
+The one-time version-2 migration applies the recovered seed when the older installation still matches its untouched default. Valid deliberate geofence or marker edits remain authoritative instead of being overwritten. Accounts, alert reads, cases, treatments, administration data, report history, and preferences are preserved independently. Invalid or unavailable storage falls back to the deterministic state, and marker collections and geofence overrides remain isolated by Survey ID.
 
 Operational Reset clears alert reads, workflow overrides, report history, administration changes, and preferences. It deliberately preserves saved geofences and marker collections because those are survey-definition state, not page-level workflow state.
 

@@ -280,9 +280,9 @@
     const CASE_ACTION_LABELS = {"field-assessment":"Record field assessment","area-action":"Take area-manager action",reopen:"Reopen case"};
     const TREATMENT_TRANSITIONS = {Recommended:"Planned",Planned:"In progress","In progress":"Completed"};
     const TREATMENT_PROGRESS = {Recommended:0,Planned:20,"In progress":60,Completed:100};
-    const ALERT_STATE_KEY = "mapped-poc-gui.state.v2";
-    const LEGACY_ALERT_STATE_KEY = "mapped-poc-gui.state.v1";
-    const DEMO_STATE_VERSION = 2;
+    const ALERT_STATE_KEY = "mapped-poc-gui.state.v3";
+    const LEGACY_ALERT_STATE_KEY = "mapped-poc-gui.state.v2";
+    const DEMO_STATE_VERSION = 3;
     const AP_BOUNDS = [[12.55,76.70],[19.25,84.85]];
     const AREA_ONE_ID = "MPOC-SURVEY-001";
     const AREA_TWO_ID = "MPOC-SURVEY-002";
@@ -534,11 +534,26 @@
       const validPositions=(Object.keys(areaOnePositions).length>0&&validAreaOneTreePositions(areaOnePositions,areaOneBounds))||(Object.keys(areaTwoPositions).length>0&&validAreaTwoTreePositions(areaTwoPositions,areaTwoPolygon))||(Object.keys(areaThreePositions).length>0&&validAreaThreeTreePositions(areaThreePositions,areaThreeBounds));
       return Boolean(validOverride||validPositions);
     }
+    function isPreviousDefaultSpatialState(saved){
+      const bounds=saved?.geofenceOverrides?.[AREA_ONE_ID],areaOne=saved?.areaOneTreePositions||{};
+      return validAreaOneGeofenceBounds(bounds)
+        && Number(bounds.south)===AREA_ONE_DEFAULT_GEOFENCE_BOUNDS.south
+        && Number(bounds.west)===AREA_ONE_DEFAULT_GEOFENCE_BOUNDS.west
+        && Number(bounds.north)===AREA_ONE_DEFAULT_GEOFENCE_BOUNDS.north
+        && Number(bounds.east)===AREA_ONE_DEFAULT_GEOFENCE_BOUNDS.east
+        && Object.keys(saved.geofenceOverrides||{}).length===1
+        && Object.keys(areaOne).length===37
+        && Number(areaOne["TREE-0113"]?.latitude)===16.912294902
+        && Number(areaOne["TREE-0149"]?.longitude)===81.169831434
+        && Object.values(areaOne).every(point=>point?.displayStatus==="Infected")
+        && Object.keys(saved.areaTwoTreePositions||{}).length===0
+        && Object.keys(saved.areaThreeTreePositions||{}).length===0;
+    }
     function migrateDemoState(saved){
       const fallback=defaultDemoState();
       if(!saved||typeof saved!=="object")return fallback;
       const requiresSeedUpgrade=Number(saved.version)<DEMO_STATE_VERSION||!Number.isFinite(Number(saved.version));
-      const spatialSource=requiresSeedUpgrade&&!hasValidDeliberateSpatialState(saved)?fallback:saved;
+      const spatialSource=requiresSeedUpgrade&&(!hasValidDeliberateSpatialState(saved)||isPreviousDefaultSpatialState(saved))?fallback:saved;
       const migrated={...fallback,version:DEMO_STATE_VERSION,accounts:saved.accounts,cases:saved.cases,caseActions:saved.caseActions,treatments:saved.treatments,administration:saved.administration,reportHistory:saved.reportHistory,preferences:saved.preferences,geofenceOverrides:saved.geofenceOverrides,areaOneTreePositions:saved.areaOneTreePositions,areaTwoTreePositions:saved.areaTwoTreePositions,areaThreeTreePositions:saved.areaThreeTreePositions};
       migrated.accounts=saved.accounts&&typeof saved.accounts==="object"?saved.accounts:{};
       Object.keys(roles).forEach(id=>{const account=migrated.accounts[id]&&typeof migrated.accounts[id]==="object"?migrated.accounts[id]:{};account.readAlertIds=Array.isArray(account.readAlertIds)?account.readAlertIds.filter(value=>typeof value==="string"):[];migrated.accounts[id]=account;});
