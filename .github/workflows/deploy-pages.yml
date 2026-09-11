@@ -1,0 +1,50 @@
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build static site configuration
+        env:
+          HYPER_MAPS_KEY: ${{ secrets.HYPER_MAPS_KEY }}
+        run: |
+          if [ -z "$HYPER_MAPS_KEY" ]; then
+            echo "HYPER_MAPS_KEY repository secret is required." >&2
+            exit 1
+          fi
+          mkdir -p _site
+          rsync -a --exclude '.git/' --exclude '.github/' --exclude '_site/' --exclude 'config/maps.local.js' ./ _site/
+          mkdir -p _site/config
+          printf 'window.PALMWATCH_CONFIG = Object.freeze({\n  hyper_maps_key: "%s"\n});\n' "$HYPER_MAPS_KEY" > _site/config/maps.local.js
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload site artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy site
+        id: deployment
+        uses: actions/deploy-pages@v4
